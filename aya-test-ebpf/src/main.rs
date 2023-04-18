@@ -51,22 +51,35 @@ fn try_xdp_firewall(ctx: XdpContext) -> Result<u32, ()> {
     let ipv4hdr: *const Ipv4Hdr = ptr_at(&ctx, EthHdr::LEN)?;
     let addr_source = u32::from_be(unsafe { (*ipv4hdr).src_addr });
     let addr_dest = u32::from_be(unsafe { (*ipv4hdr).dst_addr });
-    let action = xdp_action::XDP_PASS;
 
-    let addr_dest_ip = Ipv4Addr::from(addr_dest);
-    let addr_dest_octets = addr_dest_ip.octets();
+    let addr_src_ip = Ipv4Addr::from(addr_source);
+    let addr_src_octets = addr_src_ip.octets();
+    let src_addr1 = addr_src_octets[0];
+    let src_addr2 = addr_src_octets[1];
 
-    info!(
-        &ctx,
-        "Destination IP part 1: {}", addr_dest_octets[0]
-    );
+    let addr_dst_ip = Ipv4Addr::from(addr_dest);
+    let addr_dst_octets = addr_dst_ip.octets();
+    let dst_addr1 = addr_dst_octets[0];
+    let dst_addr2 = addr_dst_octets[1];
 
-    if addr_dest_octets[0] == 142u8 {
+    // info!(
+    //     &ctx,
+    //     "Src: {:ipv4} -- Dst: {:ipv4}", src_addr, dst_addr
+    // );
+
+    let action = if src_addr1 == 142u8 || dst_addr1 == 142u8 &&
+                    src_addr2 == 250u8 || dst_addr2 == 250u8 
+    {
         info!(
             &ctx,
-            "Someone is accessing Youtube: {:ipv4}", addr_source
+            "Someone is accessing Youtube src: {:ipv4} -- dst: {:ipv4}", addr_source, addr_dest
         );
+
+        xdp_action::XDP_DROP
     }
+    else {
+        xdp_action::XDP_PASS
+    };
 
     Ok(action)
 }
