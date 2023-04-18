@@ -1,10 +1,13 @@
 #![no_std]
 #![no_main]
+#![feature(ip_in_core)]
 
 use aya_bpf::{bindings::xdp_action, macros::xdp, programs::XdpContext};
 use aya_log_ebpf::info;
 
 use core::mem;
+use core::net::Ipv4Addr;
+
 use network_types::{
     eth::{EthHdr, EtherType},
     ip::{IpProto, Ipv4Hdr},
@@ -46,30 +49,25 @@ fn try_xdp_firewall(ctx: XdpContext) -> Result<u32, ()> {
     }
 
     let ipv4hdr: *const Ipv4Hdr = ptr_at(&ctx, EthHdr::LEN)?;
-    let source_addr = u32::from_be(unsafe { (*ipv4hdr).src_addr });
-    let mut is_udp = "false";
+    let addr_source = u32::from_be(unsafe { (*ipv4hdr).src_addr });
+    let addr_dest = u32::from_be(unsafe { (*ipv4hdr).dst_addr });
+    let action = xdp_action::XDP_PASS;
 
-    let source_port = match unsafe { (*ipv4hdr).proto } {
-        IpProto::Tcp => {
-            let tcphdr: *const TcpHdr =
-                ptr_at(&ctx, EthHdr::LEN + Ipv4Hdr::LEN)?;
-            u16::from_be(unsafe { (*tcphdr).source })
-        }
-        IpProto::Udp => {
-            let udphdr: *const UdpHdr =
-                ptr_at(&ctx, EthHdr::LEN + Ipv4Hdr::LEN)?;
-            is_udp = "true";
-            u16::from_be(unsafe { (*udphdr).source })
-        }
-        _ => return Err(()),
-    };
+    let addr_dest_ip = Ipv4Addr::from(addr_dest);
+    let addr_dest_octets = addr_dest_ip.octets();
 
-    // 
     info!(
         &ctx,
-        "SRC IP: {:ipv4}, SRC PORT: {}, is UDP? {}", source_addr, source_port, is_udp
+        "Destination IP part 1: {}", addr_dest_octets[0]
     );
 
-    Ok(xdp_action::XDP_PASS)
+    if addr_dest_octets[0] == 142u8 {
+        info!(
+            &ctx,
+            "Someone is accessing Youtube: {:ipv4}", addr_source
+        );
+    }
+
+    Ok(action)
 }
 
